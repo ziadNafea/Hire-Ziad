@@ -1,0 +1,62 @@
+name: Deploy Portfolio to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Extract portfolio website
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
+          if [ -z "$archive" ]; then
+            echo "No portfolio ZIP archive found in repository root."
+            exit 1
+          fi
+          mkdir -p extracted public
+          unzip -q "$archive" -d extracted
+          index_file="$(find extracted -type f -iname 'index.html' -print -quit)"
+          if [ -z "$index_file" ]; then
+            echo "The ZIP does not contain an index.html file."
+            exit 1
+          fi
+          cp -a "$(dirname "$index_file")/." public/
+          test -f public/index.html
+          echo "Portfolio files prepared:"
+          find public -maxdepth 2 -type f | head -80
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
